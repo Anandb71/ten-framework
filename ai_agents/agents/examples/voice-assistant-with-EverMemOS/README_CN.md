@@ -91,8 +91,8 @@ PROXY_URL=http://127.0.0.1:7890
 # 安装 Python 依赖
 pip install -r requirements.txt
 
-# 确保安装 evermemos SDK
-pip install evermemos
+# 确保安装 EverOS Cloud SDK
+pip install "everos-cloud>=1.0,<2"
 ```
 
 ### 5. 运行服务
@@ -190,16 +190,16 @@ docker-compose up -d
 
 **可能原因**：
 - 对话轮数不够（未达到保存阈值）
-- evermemos 包未安装
+- everos-cloud 包未安装
 - API Key 配置错误
 
 **解决方案**：
 ```bash
-# 检查 evermemos 包
-pip list | grep evermemos
+# 检查 everos-cloud 包
+pip list | grep everos-cloud
 
 # 重新安装
-pip install --upgrade evermemos
+pip install --upgrade "everos-cloud>=1.0,<2"
 
 # 查看启动日志中是否有错误
 # 寻找包含 "EverMemOS" 或 "Failed to initialize" 的日志
@@ -226,34 +226,37 @@ pip install --upgrade evermemos
 
 ### EverMemOS SDK 使用
 
-项目使用 [evermemos Python SDK](https://pypi.org/project/evermemos/)：
+Cloud v1 已于 2026 年 11 月 2 日停用。本示例使用 v2 Memory API，原 API Key 仍然有效。旧 group_id 对应 v2 project_id，读写使用相同的用户与助手组合。SDK 调用在线程中运行，避免阻塞语音事件循环。
+
+项目使用 [everos-cloud Python SDK](https://pypi.org/project/everos-cloud/)：
 
 ```python
-from evermemos import EverMemOS
+from everos_cloud import EverOS
 
-# 初始化
-client = EverMemOS(api_key="your_api_key")
-memory = client.v0.memories
+client = EverOS(api_key="your_api_key")
+project_id = "user_voice_assistant_agent"
+session_id = "conversation_001"
 
-# 保存消息
-response = memory.add(
-    message_id="msg_001",
-    create_time="2025-01-15T10:00:00Z",
-    sender="user",
-    sender_name="User",
-    group_id="user_voice_assistant_agent",
-    content="我喜欢喝黑咖啡",
-    flush="true"  # 最后一条消息触发记忆提取
+client.add(
+    session_id=session_id,
+    project_id=project_id,
+    messages=[{
+        "sender_id": "user",
+        "role": "user",
+        "content": "我喜欢喝黑咖啡",
+    }],
+    async_mode=False,
 )
+client.flush(session_id, project_id=project_id)
 
-# 搜索记忆
-response = memory.search(extra_query={
-    "query": "咖啡偏好",
-    "user_id": "user",
-    "retrieve_method": "hybrid",  # 混合搜索
-    "memory_types": ["episodic_memory"],
-    "top_k": 10
-})
+response = client.search(
+    "coffee preference",
+    user_id="user",
+    project_id=project_id,
+    method="hybrid",
+    top_k=10,
+)
+# response.episodes contains the matching memories.
 ```
 
 ## 🎨 自定义配置
@@ -295,7 +298,7 @@ memorise = [
 ## 📚 相关文档
 
 - [EverMemOS 官方文档](https://evermemos.com/docs)
-- [evermemos Python SDK](https://github.com/memogpt/evermemos-python)
+- [everos-cloud Python SDK](https://github.com/EverMind-AI/everos-cloud-sdk-python)
 - [TEN Framework 文档](https://doc.theten.ai/)
 - [项目变更记录](./EVERMEMOS_MIGRATION_SUMMARY.md)
 - [记忆优化说明](./MEMORY_OPTIMIZATION_CHANGES.md)

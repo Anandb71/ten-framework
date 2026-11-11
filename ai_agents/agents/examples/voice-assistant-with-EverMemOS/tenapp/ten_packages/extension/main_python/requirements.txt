@@ -1,4 +1,5 @@
 # Memory integration
+everos-cloud>=1.0,<2
 powermem>=0.2.0
 aiohttp
 

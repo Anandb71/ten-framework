@@ -91,8 +91,8 @@ Edit the `evermemos_config` section in `tenapp/property.json`:
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Ensure evermemos SDK is installed
-pip install evermemos
+# Ensure EverOS Cloud SDK is installed
+pip install "everos-cloud>=1.0,<2"
 ```
 
 ### 5. Run the Service
@@ -190,16 +190,16 @@ After startup, observe EverMemOS-related information in the logs:
 
 **Possible Causes**:
 - Insufficient conversation turns (haven't reached save threshold)
-- evermemos package not installed
+- everos-cloud package not installed
 - API Key configuration error
 
 **Solution**:
 ```bash
-# Check evermemos package
-pip list | grep evermemos
+# Check everos-cloud package
+pip list | grep everos-cloud
 
 # Reinstall
-pip install --upgrade evermemos
+pip install --upgrade "everos-cloud>=1.0,<2"
 
 # Check startup logs for errors
 # Look for logs containing "EverMemOS" or "Failed to initialize"
@@ -226,34 +226,37 @@ pip install --upgrade evermemos
 
 ### EverMemOS SDK Usage
 
-This project uses the [evermemos Python SDK](https://pypi.org/project/evermemos/):
+Cloud v1 retired on November 2, 2026. This example uses the v2 Memory API. The existing API key still works. Explicit legacy group ids map to project ids; the store uses the same user/agent pair for writes and reads. SDK calls run in threads to keep the voice event loop responsive.
+
+This project uses the [everos-cloud Python SDK](https://pypi.org/project/everos-cloud/):
 
 ```python
-from evermemos import EverMemOS
+from everos_cloud import EverOS
 
-# Initialize
-client = EverMemOS(api_key="your_api_key")
-memory = client.v0.memories
+client = EverOS(api_key="your_api_key")
+project_id = "user_voice_assistant_agent"
+session_id = "conversation_001"
 
-# Save message
-response = memory.add(
-    message_id="msg_001",
-    create_time="2025-01-15T10:00:00Z",
-    sender="user",
-    sender_name="User",
-    group_id="user_voice_assistant_agent",
-    content="I like black coffee",
-    flush="true"  # Last message triggers memory extraction
+client.add(
+    session_id=session_id,
+    project_id=project_id,
+    messages=[{
+        "sender_id": "user",
+        "role": "user",
+        "content": "I like black coffee",
+    }],
+    async_mode=False,
 )
+client.flush(session_id, project_id=project_id)
 
-# Search memory
-response = memory.search(extra_query={
-    "query": "coffee preference",
-    "user_id": "user",
-    "retrieve_method": "hybrid",  # Hybrid search
-    "memory_types": ["episodic_memory"],
-    "top_k": 10
-})
+response = client.search(
+    "coffee preference",
+    user_id="user",
+    project_id=project_id,
+    method="hybrid",
+    top_k=10,
+)
+# response.episodes contains the matching memories.
 ```
 
 ## 🎨 Custom Configuration
@@ -295,7 +298,7 @@ Edit `property.json`:
 ## 📚 Related Documentation
 
 - [EverMemOS Official Documentation](https://evermemos.com/docs)
-- [evermemos Python SDK](https://github.com/memogpt/evermemos-python)
+- [everos-cloud Python SDK](https://github.com/EverMind-AI/everos-cloud-sdk-python)
 - [TEN Framework Documentation](https://doc.theten.ai/)
 - [Project Change Log](./EVERMEMOS_MIGRATION_SUMMARY.md)
 - [Memory Optimization Notes](./MEMORY_OPTIMIZATION_CHANGES.md)

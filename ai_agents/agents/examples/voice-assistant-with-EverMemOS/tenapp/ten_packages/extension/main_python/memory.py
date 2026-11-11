@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import time
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
@@ -31,17 +33,17 @@ class EverMemosMemoryStore(MemoryStore):
 
     def __init__(self, config: Dict[str, Any], env: AsyncTenEnv):
         super().__init__(env)
-        from evermemos import EverMemOS
+        from everos_cloud import EverOS
 
         # 从配置中获取 API key
         api_key = config.get("api_key", "")
         if not api_key:
             raise ValueError("EverMemOS API key is required in config")
 
-        self.client = EverMemOS(api_key=api_key)
-        self.memory = self.client.v0.memories
+        self.client = EverOS(api_key=api_key)
+        self.session_id = uuid.uuid4().hex
         self.env.log_info(
-            f"[EverMemosMemoryStore] Initialized with API key: {api_key[:8]}..."
+            "[EverMemosMemoryStore] Initialized EverOS Cloud client"
         )
 
     async def add(
@@ -50,7 +52,7 @@ class EverMemosMemoryStore(MemoryStore):
         user_id: str,
         agent_id: str,
     ) -> None:
-        """Add conversation to EverMemOS using evermemos SDK."""
+        """Add conversation to EverMemOS using the EverOS Cloud SDK."""
         self.env.log_info(
             f"╔══════════════════════════════════════════════════════════════════╗\n"
             f"║                [EverMemOS] 保存对话到记忆                          ║\n"
@@ -78,31 +80,36 @@ class EverMemosMemoryStore(MemoryStore):
             for i, msg in enumerate(conversation):
                 try:
                     payload = {
-                        "message_id": f"msg_{base_ts}_{i:03d}",
-                        "create_time": time.strftime(
-                            "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
-                        ),
-                        "sender": (
+                        "timestamp": base_ts + i,
+                        "sender_id": (
                             user_id if msg["role"] == "user" else agent_id
                         ),
                         "sender_name": (
                             "User" if msg["role"] == "user" else "Assistant"
                         ),
-                        "group_id": group_id,
+                        "role": msg["role"],
                         "content": msg["content"],
                     }
 
-                    # Mark last message with flush to trigger memory extraction
+                    response = await asyncio.to_thread(
+                        self.client.add,
+                        session_id=self.session_id,
+                        project_id=group_id,
+                        messages=[payload],
+                        async_mode=False,
+                    )
                     if i == len(conversation) - 1:
-                        payload["flush"] = "true"
-
-                    response = self.memory.add(**payload)
+                        await asyncio.to_thread(
+                            self.client.flush,
+                            self.session_id,
+                            project_id=group_id,
+                        )
                     self.env.log_info(
                         f"    [{i+1}/{len(conversation)}] "
                         f"[{payload['sender_name']}] {payload['content'][:50]}..."
                     )
                     self.env.log_info(
-                        f"         └─ API响应: status={response.status}, message={response.message}"
+                        f"         └─ API响应: status={response.status}"
                     )
                 except Exception as e:
                     self.env.log_error(
@@ -136,24 +143,14 @@ class EverMemosMemoryStore(MemoryStore):
         )
 
         try:
-            search_params = {
-                "query": query,
-                "user_id": user_id,
-                "retrieve_method": "hybrid",  # 使用混合搜索
-                "memory_types": ["episodic_memory"],
-                "top_k": 10,
-            }
-
-            self.env.log_info(
-                f"[EverMemOS] 🔎 正在搜索用户 '{user_id}' 的记忆..."
+            response = await asyncio.to_thread(
+                self.client.search,
+                query,
+                user_id=user_id,
+                project_id=f"{user_id}_{agent_id}",
+                method="hybrid",
+                top_k=10,
             )
-            response = self.memory.search(extra_query=search_params)
-
-            if response.status != "ok":
-                self.env.log_warn(
-                    f"[EverMemOS] ⚠️ 搜索失败: status={response.status}, message={response.message}"
-                )
-                return {"results": []}
 
             # 转换为统一格式
             result = {"results": []}
@@ -161,8 +158,8 @@ class EverMemosMemoryStore(MemoryStore):
 
             self.env.log_info(f"[EverMemOS] 📊 搜索结果详情:")
 
-            if response.result and response.result.memories:
-                memories = response.result.memories
+            if response.episodes:
+                memories = response.episodes
 
                 self.env.log_info(
                     f"    ┌──────────────────────────────────────────────────────────────────┐"
